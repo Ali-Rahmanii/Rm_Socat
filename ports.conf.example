@@ -1,0 +1,42 @@
+# rm-socat forward rules — one line per rule, comma separated.
+# راهنمای فارسی: پایین همین فایل را ببین.
+#
+#   name , local_port , remote_host , remote_port , proto , ip
+#
+#   name         unique. letters/digits/-/_  only — becomes the systemd
+#                instance name (rm-socat@<name>-tcp / -udp)
+#   local_port   the port THIS box listens on (what the end user connects to)
+#   remote_host  the domain or IP this port forwards to
+#   remote_port  the port on remote_host
+#   proto        tcp | udp | both     (both = one rule, two sockets)
+#   ip           dual | 4 | 6         (dual = default: ONE socket serves
+#                                       both IPv4 and IPv6 — needs
+#                                       net.ipv6.bindv6only=0, which
+#                                       install.sh sets for you)
+#
+# Copy this file to ports.conf (install.sh does this automatically on first
+# run) and edit — then run: ./manage.sh apply
+#
+# Examples (commented out on purpose — uncomment/edit, don't run these as-is):
+# rmg1        , 1232       , rmg1.example.com   , 1232        , tcp   , dual
+# main-de     , 8880       , de.example.com     , 8880        , both  , dual
+# wg-relay    , 51820      , wg.example.com     , 51820       , udp   , dual
+
+# ============================== فارسی ==============================
+# هر خط یک قانون فوروارد است، با کاما جدا شده:
+#
+#   name , local_port , remote_host , remote_port , proto , ip
+#
+#   name         یکتا. فقط حروف/عدد/خط‌فاصله/آندرلاین — اسم سرویس
+#                systemd از این ساخته می‌شود (rm-socat@<name>-tcp/-udp)
+#   local_port   پورتی که خودِ این سرور روی آن گوش می‌دهد (پورت ورودی کاربر)
+#   remote_host  دامنه یا آی‌پی مقصدی که ترافیک به آن فوروارد می‌شود
+#   remote_port  پورت روی سرور مقصد
+#   proto        tcp یا udp یا both   (both = یک قانون، دو سوکت جدا)
+#   ip           dual یا 4 یا 6       (dual = پیش‌فرض: یک سوکت هم IPv4 و
+#                                      هم IPv6 را همزمان جواب می‌دهد —
+#                                      نیاز به net.ipv6.bindv6only=0 دارد
+#                                      که install.sh خودش تنظیمش می‌کند)
+#
+# این فایل را کپی کن به ports.conf (اسکریپت install.sh این کار را خودش
+# بار اول انجام می‌دهد) و ویرایشش کن، بعد بزن: ./manage.sh apply

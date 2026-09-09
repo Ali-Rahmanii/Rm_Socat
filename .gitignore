@@ -1,0 +1,3 @@
+# your actual forward rules (real domains/IPs) never get committed
+ports.conf
+*.log
