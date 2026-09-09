@@ -11,8 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORTS_CONF="$SCRIPT_DIR/ports.conf"
 BATCHES_CONF="$SCRIPT_DIR/batches.conf"
 
-VERSION="v1.1.0"
+VERSION="v1.2.0"
 REPO_URL="https://github.com/Ali-Rahmanii/Rm_Socat"
+RAW_MANAGE_URL="https://raw.githubusercontent.com/Ali-Rahmanii/Rm_Socat/main/manage.sh"
 AUTHOR="Ali Rahmani"
 TELEGRAM="@A_Alirahmani"
 
@@ -434,9 +435,27 @@ EOF
 menu_item() { printf '  %s %s   %s\n' "$(gray '❯')" "$(pink "[$1]")" "$2"; }
 hline_plain() { printf '%s\n' "$(blue "$RULE")"; }
 
+# quick, timeout-bounded check so an old version notices a new one's out —
+# runs once when the menu opens, never blocks more than ~2s, and never
+# errors the menu out if there's no network or no curl.
+check_for_update() {
+  command -v curl >/dev/null 2>&1 || return 0
+  local remote
+  remote="$(curl -fsSL --max-time 2 "$RAW_MANAGE_URL" 2>/dev/null | grep -m1 '^VERSION=' | sed -E 's/^VERSION="(.*)"$/\1/')"
+  if [ -n "$remote" ] && [ "$remote" != "$VERSION" ]; then
+    echo " $(yellow '⚡ update available:') ${VERSION} → ${remote}   run: $(bold 'sudo rmsocat update')"
+    echo
+  fi
+}
+
 menu() {
+  local first_screen=1
   while true; do
     banner
+    if [ "$first_screen" = 1 ]; then
+      check_for_update
+      first_screen=0
+    fi
     echo " $(bold "$(purple 'Main Menu')")"
     hline_plain
     menu_item 1  "Add a new port forward"
