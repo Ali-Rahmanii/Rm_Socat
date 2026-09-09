@@ -30,7 +30,12 @@ build_socat_args() {  # proto ip lport host rport -> sets LISTEN_ / TARGET_
     tcp/dual) LISTEN_="TCP-LISTEN:${lport},reuseaddr,fork,su=nobody";  TARGET_="TCP:${host}:${rport}"  ;;
     tcp/4)    LISTEN_="TCP4-LISTEN:${lport},reuseaddr,fork,su=nobody"; TARGET_="TCP4:${host}:${rport}" ;;
     tcp/6)    LISTEN_="TCP6-LISTEN:${lport},reuseaddr,fork,su=nobody"; TARGET_="TCP6:${host}:${rport}" ;;
-    udp/dual) LISTEN_="UDP-LISTEN:${lport},reuseaddr,fork,su=nobody";  TARGET_="UDP:${host}:${rport}"  ;;
+    # plain UDP-LISTEN (unspecified family) crashes on some socat builds
+    # with "unknown address family 0" — TCP-LISTEN doesn't have this bug,
+    # UDP does. UDP6-LISTEN is explicit (AF_INET6) so it doesn't hit that
+    # path, and still serves IPv4 clients via bindv6only=0 (set system-wide
+    # by install.sh) the same way "dual" TCP does.
+    udp/dual) LISTEN_="UDP6-LISTEN:${lport},reuseaddr,fork,su=nobody"; TARGET_="UDP:${host}:${rport}"  ;;
     udp/4)    LISTEN_="UDP4-LISTEN:${lport},reuseaddr,fork,su=nobody"; TARGET_="UDP4:${host}:${rport}" ;;
     udp/6)    LISTEN_="UDP6-LISTEN:${lport},reuseaddr,fork,su=nobody"; TARGET_="UDP6:${host}:${rport}" ;;
     *)        LISTEN_=""; TARGET_="" ;;
