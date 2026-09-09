@@ -87,10 +87,16 @@ for inst in "${!CMD_LISTEN[@]}"; do
   spawn "$inst"
 done
 
-# supervise forever: respawn whichever child just exited
+# supervise forever: respawn whichever child just exited. The sleep 1 is
+# not cosmetic — without it, a socat that can't stay up (port conflict,
+# bad target, whatever) gets relaunched as fast as the CPU allows, which
+# is exactly what pegged every core at 100% in practice. This throttles
+# every batch to at most one respawn pass per second, same as the old
+# per-port units' RestartSec=1.
 while :; do
   wait -n 2>/dev/null
   [ "$SHUTTING_DOWN" = 1 ] && exit 0
+  sleep 1
   for inst in "${!PID_OF[@]}"; do
     if ! kill -0 "${PID_OF[$inst]}" 2>/dev/null; then
       spawn "$inst"
