@@ -144,9 +144,14 @@ batches. Requires the install to be a git checkout — the one-line
   in steps of `step` every `settle` seconds, up to `max` attempts, so the
   reported count is real concurrency, not cumulative attempts. Raises its
   own `ulimit -n`/`-u` first — your login shell's default is usually the
-  actual bottleneck, not the port. **This exercises the full forward chain
-  up to the real remote server**, not just the local socket —
-  confirmation required.
+  actual bottleneck, not the port. Before every step it checks available
+  RAM and load average and stops *before* launching a step that looks
+  dangerous, rather than after — confirmed live that without this, ramping
+  far enough can take down the whole box (SSH included), not just fail
+  the next connection. Still, start low and raise gradually; don't rely on
+  the SSH session you're testing from surviving a worst case. **This
+  exercises the full forward chain up to the real remote server**, not
+  just the local socket — confirmation required.
 
 ## Uninstall
 

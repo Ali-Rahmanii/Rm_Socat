@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORTS_CONF="$SCRIPT_DIR/ports.conf"
 BATCHES_CONF="$SCRIPT_DIR/batches.conf"
 
-VERSION="v1.2.0"
+VERSION="v1.3.0"
 REPO_URL="https://github.com/Ali-Rahmanii/Rm_Socat"
 RAW_MANAGE_URL="https://raw.githubusercontent.com/Ali-Rahmanii/Rm_Socat/main/manage.sh"
 AUTHOR="Ali Rahmani"
@@ -314,6 +314,7 @@ cmd_test() { "$SCRIPT_DIR/tests/test_ports.sh" "$@"; }
 
 cmd_stress() {
   echo "$(yellow 'warning:') this puts real load on the full forward chain (up to the actual remote server), not just the local socket."
+  echo "$(yellow 'warning:') it backs off if RAM/load look dangerous, but confirmed live it can still overwhelm a small box — start low, raise gradually, and don't rely on this same SSH session surviving a worst case."
   confirm "continue?" false || { echo "cancelled."; return 0; }
   "$SCRIPT_DIR/tests/stress_test.sh" "$@"
 }
@@ -424,7 +425,7 @@ $(dim "(after install.sh, the 'rmsocat' command runs this from anywhere)")
   ./manage.sh status                   live status of every port
   ./manage.sh restart                  restart every batch
   ./manage.sh test                     confirm every port is actually open
-  ./manage.sh stress <port> [tcp|udp] [step] [hold] [max]
+  ./manage.sh stress <port> [tcp|udp] [step] [settle] [max] [hold] [host]
   ./manage.sh batches                  change how many systemd units share the load
   ./manage.sh update                   git pull + re-apply
   ./manage.sh purge                    full uninstall
