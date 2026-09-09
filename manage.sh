@@ -292,7 +292,7 @@ cmd_status() {
       if [ "$p" = tcp ]; then
         ss -Htln "sport = :${lp}" 2>/dev/null | grep -q LISTEN && sockstr="$(green LISTEN)" || sockstr="$(red CLOSED)"
       else
-        ss -Huln "sport = :${lp}" 2>/dev/null | grep -q . && sockstr="$(green LISTEN)" || sockstr="$(red CLOSED)"
+        ss -Huan "sport = :${lp}" 2>/dev/null | grep -q . && sockstr="$(green LISTEN)" || sockstr="$(red CLOSED)"
       fi
       printf "%-16s %-6s %-8s %-28s %-16s %-8s\n" "$n" "$p" "$lp" "${h}:${rp}" "$batchstr" "$sockstr"
     done

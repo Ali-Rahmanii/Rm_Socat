@@ -32,7 +32,10 @@ while IFS=',' read -r n lp h rp pr ip; do
         printf '\033[38;5;203m❌\033[0m %-16s tcp  :%-7s CLOSED\n' "$n" "$lp"; fail=$((fail + 1))
       fi
     else
-      if ss -Huln "sport = :${lp}" 2>/dev/null | grep -q .; then
+      # -a, not -l: some iproute2 builds don't reliably flag a bound UDP
+      # socket as "listening" since UDP has no LISTEN state to begin with
+      # (it shows UNCONN) — -a lists it regardless of that heuristic.
+      if ss -Huan "sport = :${lp}" 2>/dev/null | grep -q .; then
         printf '\033[38;5;78m✅\033[0m %-16s udp  :%-7s LISTEN\n' "$n" "$lp"; pass=$((pass + 1))
       else
         printf '\033[38;5;203m❌\033[0m %-16s udp  :%-7s CLOSED\n' "$n" "$lp"; fail=$((fail + 1))
