@@ -99,8 +99,24 @@ cat > /etc/security/limits.d/99-rm-socat.conf <<'EOF'
 * hard nproc  unlimited
 EOF
 
+log "installing the 'rmsocat' command..."
+cat > /usr/local/bin/rmsocat <<EOF
+#!/usr/bin/env bash
+exec "${SCRIPT_DIR}/manage.sh" "\$@"
+EOF
+chmod +x /usr/local/bin/rmsocat
+
 echo
-log "installed. next steps:"
-echo "    nano ${SCRIPT_DIR}/ports.conf      # add your forwards"
-echo "    sudo ${SCRIPT_DIR}/manage.sh apply # bring systemd in sync with ports.conf"
-echo "    sudo ${SCRIPT_DIR}/manage.sh       # interactive menu"
+log "installed. 'rmsocat' now opens the menu from anywhere."
+echo "    nano ${SCRIPT_DIR}/ports.conf   # add your forwards"
+echo "    rmsocat apply                  # bring systemd in sync with ports.conf"
+echo
+
+# hand off to the interactive menu — but only if there's an actual terminal
+# to talk to. stdin here is usually the exhausted curl|bash pipe, not a
+# terminal, even when re-exec'd from a real file, so reopen it from the tty.
+if [ -e /dev/tty ]; then
+  exec "$SCRIPT_DIR/manage.sh" < /dev/tty
+else
+  echo "run 'rmsocat' (or sudo ${SCRIPT_DIR}/manage.sh) to open the menu."
+fi

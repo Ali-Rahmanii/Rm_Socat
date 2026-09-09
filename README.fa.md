@@ -71,17 +71,20 @@ name , local_port , remote_host , remote_port , proto , ip
 curl -fsSL https://raw.githubusercontent.com/Ali-Rahmanii/Rm_Socat/main/install.sh | sudo bash
 ```
 
-این دستور ریپو را به `/opt/rm-socat` کلون می‌کند و نصب‌کننده‌ی خودش را
-اجرا می‌کند. (اگه خودت قبلاً کلون کردی، همون پوشه `cd` کن و `sudo
+این دستور ریپو را به `/opt/rm-socat` کلون می‌کند، نصب‌کننده‌ی خودش را
+اجرا می‌کند، دستور سراسری `rmsocat` را نصب می‌کند، و مستقیم می‌بردت توی
+منوی تعاملی. (اگه خودت قبلاً کلون کردی، همون پوشه `cd` کن و `sudo
 ./install.sh` رو مستقیم بزن — همون اسکریپت، هر دو حالت امنه.) `socat` را
 نصب می‌کند، یونیت `systemd` را نصب می‌کند، بار اول `ports.conf` و
 `batches.conf` را می‌سازد، و سقف‌های کرنل/`ulimit` را برای کانکشن بالا
 بالا می‌برد.
 
-بعد `ports.conf` را ویرایش کن و:
+از این به بعد، فقط از هرجا بنویس `rmsocat` تا منو دوباره باز شه — یه
+اسکریپت کوچیکه که نصاب توی `/usr/local/bin/rmsocat` می‌گذارد. `ports.conf`
+را ویرایش کن و:
 
 ```bash
-sudo /opt/rm-socat/manage.sh apply
+sudo rmsocat apply
 ```
 
 ## استفاده

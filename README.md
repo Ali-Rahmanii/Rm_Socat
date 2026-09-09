@@ -70,18 +70,22 @@ placeholder example does.
 curl -fsSL https://raw.githubusercontent.com/Ali-Rahmanii/Rm_Socat/main/install.sh | sudo bash
 ```
 
-That clones the repo to `/opt/rm-socat` and runs its own installer. (Already
-cloned it yourself? `cd` into it and run `sudo ./install.sh` directly —
-same script, safe to re-run either way.) It installs `socat`, installs the
-`systemd` template unit, creates `ports.conf`/`batches.conf` on first run,
-and raises kernel/`ulimit` ceilings for high connection counts
-(`net.ipv6.bindv6only=0`, `somaxconn`, `tcp_max_syn_backlog`, `fs.file-max`,
-`nofile`/`nproc`, plus `LimitNOFILE=1048576` on every unit).
+That clones the repo to `/opt/rm-socat`, runs its own installer, installs
+a global `rmsocat` command, and drops you straight into the interactive
+menu. (Already cloned it yourself? `cd` into it and run `sudo
+./install.sh` directly — same script, safe to re-run either way.) It
+installs `socat`, installs the `systemd` template unit, creates
+`ports.conf`/`batches.conf` on first run, and raises kernel/`ulimit`
+ceilings for high connection counts (`net.ipv6.bindv6only=0`, `somaxconn`,
+`tcp_max_syn_backlog`, `fs.file-max`, `nofile`/`nproc`, plus
+`LimitNOFILE=1048576` on every unit).
 
-Then edit `ports.conf` and:
+From then on, just run `rmsocat` from anywhere (any terminal, any
+directory) to reopen the menu — it's a tiny wrapper the installer puts at
+`/usr/local/bin/rmsocat`. Edit `ports.conf` and:
 
 ```bash
-sudo /opt/rm-socat/manage.sh apply
+sudo rmsocat apply
 ```
 
 ## Usage

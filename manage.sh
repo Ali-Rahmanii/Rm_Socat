@@ -338,6 +338,11 @@ cmd_update() {
   chmod +x "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/bin/*.sh "$SCRIPT_DIR"/tests/*.sh 2>/dev/null || true
   log "reinstalling the systemd template (in case it changed)..."
   install_unit_template
+  cat > /usr/local/bin/rmsocat <<EOF
+#!/usr/bin/env bash
+exec "${SCRIPT_DIR}/manage.sh" "\$@"
+EOF
+  chmod +x /usr/local/bin/rmsocat
   ensure_conf
   cmd_apply
   log "update complete."
@@ -377,6 +382,7 @@ cmd_purge() {
 print_help() {
   cat <<EOF
 $(bold "rm-socat manage.sh") $(dim "$VERSION")
+$(dim "(after install.sh, the 'rmsocat' command runs this from anywhere)")
 
   ./manage.sh                          interactive menu
   ./manage.sh add [name lport host rport [proto] [ip]]
