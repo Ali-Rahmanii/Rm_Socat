@@ -334,7 +334,21 @@ cmd_update() {
   require_root
   [ -d "$SCRIPT_DIR/.git" ] || die "not a git checkout — reinstall with the one-line installer (see README) to enable updates."
   log "pulling latest changes..."
-  git -C "$SCRIPT_DIR" pull --ff-only || die "git pull failed — check for local edits in $SCRIPT_DIR"
+  # any local drift in tracked files (an old chmod, a manual edit) would
+  # otherwise make `git pull --ff-only` refuse outright — stash it out of
+  # the way first and restore it after, so update never gets stuck
+  local stashed=0
+  if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain 2>/dev/null)" ]; then
+    log "stashing local changes before pulling..."
+    git -C "$SCRIPT_DIR" stash push -u -m "rm-socat auto-stash before update" >/dev/null 2>&1 && stashed=1
+  fi
+  if ! git -C "$SCRIPT_DIR" pull --ff-only; then
+    [ "$stashed" = 1 ] && git -C "$SCRIPT_DIR" stash pop >/dev/null 2>&1
+    die "git pull failed even after stashing local changes — check $SCRIPT_DIR manually (git status / git log)"
+  fi
+  if [ "$stashed" = 1 ] && ! git -C "$SCRIPT_DIR" stash pop >/dev/null 2>&1; then
+    warn "pulled fine, but couldn't reapply your local changes automatically — run: git -C $SCRIPT_DIR stash list"
+  fi
   chmod +x "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/bin/*.sh "$SCRIPT_DIR"/tests/*.sh 2>/dev/null || true
   log "reinstalling the systemd template (in case it changed)..."
   install_unit_template

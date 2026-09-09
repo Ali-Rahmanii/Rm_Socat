@@ -1,3 +1,6 @@
-# your actual forward rules (real domains/IPs) never get committed
+# runtime state edited by manage.sh, not repo content — tracking it made
+# `git pull` (and manage.sh update) refuse to run for anyone who'd ever
+# used the "change batch count" menu option
 ports.conf
+batches.conf
 *.log
