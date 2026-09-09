@@ -7,38 +7,85 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORTS_CONF="$SCRIPT_DIR/ports.conf"
 
+VERSION="v1.0.0"
+REPO_URL="https://github.com/Ali-Rahmanii/Rm_Socat"
+AUTHOR="Ali Rahmani"
+TELEGRAM="@A_Alirahmani"
+
 # ---------------------------------------------------------------- colors --
 COLOR_ENABLED=1
 [ -n "${NO_COLOR:-}" ] && COLOR_ENABLED=0
 [ -t 1 ] || COLOR_ENABLED=0
 
-paint() { if [ "$COLOR_ENABLED" = 1 ]; then printf '%s%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi; }
-blue()    { paint $'\033[38;5;69m'  "$1"; }
-cyan()    { paint $'\033[38;5;80m'  "$1"; }
-green()   { paint $'\033[38;5;78m'  "$1"; }
-red()     { paint $'\033[38;5;203m' "$1"; }
-yellow()  { paint $'\033[38;5;221m' "$1"; }
-magenta() { paint $'\033[38;5;171m' "$1"; }
-pink()    { paint $'\033[38;5;212m' "$1"; }
-gray()    { paint $'\033[38;5;244m' "$1"; }
-bold()    { paint $'\033[1m' "$1"; }
-dim()     { paint $'\033[2m' "$1"; }
+C_BLUE=$'\033[38;5;69m'
+C_CYAN=$'\033[38;5;80m'
+C_GREEN=$'\033[38;5;78m'
+C_RED=$'\033[38;5;203m'
+C_YELLOW=$'\033[38;5;221m'
+C_PURPLE=$'\033[38;5;135m'
+C_MAGENTA=$'\033[38;5;171m'
+C_PINK=$'\033[38;5;212m'
+C_GRAY=$'\033[38;5;244m'
+C_RESET=$'\033[0m'
+C_BOLD=$'\033[1m'
+C_DIM=$'\033[2m'
 
-GRADIENT=($'\033[38;5;69m' $'\033[38;5;75m' $'\033[38;5;111m' $'\033[38;5;135m' $'\033[38;5;171m' $'\033[38;5;212m')
-gradient_text() {
-  local s="$1"
-  if [ "$COLOR_ENABLED" != 1 ]; then printf '%s' "$s"; return; fi
-  local n=${#GRADIENT[@]} len=${#s} i out=""
-  for ((i = 0; i < len; i++)); do
-    out+="${GRADIENT[$((i % n))]}${s:i:1}"
-  done
-  printf '%s\033[0m' "$out"
+paint() { if [ "$COLOR_ENABLED" = 1 ]; then printf '%s%s%s' "$1" "$2" "$C_RESET"; else printf '%s' "$2"; fi; }
+blue()    { paint "$C_BLUE" "$1"; }
+cyan()    { paint "$C_CYAN" "$1"; }
+green()   { paint "$C_GREEN" "$1"; }
+red()     { paint "$C_RED" "$1"; }
+yellow()  { paint "$C_YELLOW" "$1"; }
+purple()  { paint "$C_PURPLE" "$1"; }
+magenta() { paint "$C_MAGENTA" "$1"; }
+pink()    { paint "$C_PINK" "$1"; }
+gray()    { paint "$C_GRAY" "$1"; }
+bold()    { paint "$C_BOLD" "$1"; }
+dim()     { paint "$C_DIM" "$1"; }
+
+# top-to-bottom sweep used to color the logo one row at a time
+GRADIENT=("$C_BLUE" $'\033[38;5;75m' $'\033[38;5;111m' "$C_PURPLE" "$C_MAGENTA" "$C_PINK")
+BORDER_C="$C_PURPLE"
+INNER_WIDTH=69
+
+# --------------------------------------------------------------- banner --
+# printf '─%.0s' repeated via seq — NOT `tr ' ' '─'`, which mangles a
+# multi-byte UTF-8 replacement char in byte-oriented locales/tr builds.
+RULE="$(printf -- '─%.0s' $(seq 1 "$INNER_WIDTH"))"
+
+hline() { printf '%s\n' "$(paint "$BORDER_C" "${1}${RULE}${2}")"; }
+
+box_text() {
+  local text="$1" code="${2:-}" plainlen=${#1} pad left right body
+  pad=$(( INNER_WIDTH - plainlen )); (( pad < 0 )) && pad=0
+  left=$(( pad / 2 )); right=$(( pad - left ))
+  body="$text"
+  [ -n "$code" ] && [ "$COLOR_ENABLED" = 1 ] && body="${code}${text}${C_RESET}"
+  printf '%s%*s%s%*s%s\n' "$(paint "$BORDER_C" '│')" "$left" '' "$body" "$right" '' "$(paint "$BORDER_C" '│')"
 }
 
 banner() {
   [ "$COLOR_ENABLED" = 1 ] && printf '\033[H\033[2J'
+  local logo=(
+    '██████╗ ███╗   ███╗      ███████╗ ██████╗  ██████╗ █████╗ ████████╗'
+    '██╔══██╗████╗ ████║      ██╔════╝██╔═══██╗██╔════╝██╔══██╗╚══██╔══╝'
+    '██████╔╝██╔████╔██║█████╗███████╗██║   ██║██║     ███████║   ██║   '
+    '██╔══██╗██║╚██╔╝██║╚════╝╚════██║██║   ██║██║     ██╔══██║   ██║   '
+    '██║  ██║██║ ╚═╝ ██║      ███████║╚██████╔╝╚██████╗██║  ██║   ██║   '
+    '╚═╝  ╚═╝╚═╝     ╚═╝      ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝   ╚═╝   '
+  )
   echo
-  echo "  $(gradient_text 'RM-SOCAT')  $(dim '— TCP/UDP port forwarder over socat + systemd')"
+  hline '┌' '┐'
+  local i
+  for i in "${!logo[@]}"; do
+    box_text "${logo[$i]}" "${GRADIENT[$i]}"
+  done
+  box_text "TCP/UDP port forwarder over socat + systemd" "$C_GRAY"
+  hline '├' '┤'
+  box_text "$VERSION" "$C_GREEN"
+  box_text "$REPO_URL" "$C_GRAY"
+  box_text "by ${AUTHOR}  ·  Telegram: ${TELEGRAM}" "$C_PINK"
+  hline '└' '┘'
   echo
 }
 
@@ -47,7 +94,7 @@ log()  { printf '%s %s\n' "$(green '==>')" "$1"; }
 warn() { printf '%s %s\n' "$(yellow '!!')" "$1" >&2; }
 die()  { printf '%s %s\n' "$(red 'error:')" "$1" >&2; exit 1; }
 
-require_root() { [ "$(id -u)" = 0 ] || die "این عملیات نیاز به root دارد (sudo ./manage.sh ...)"; }
+require_root() { [ "$(id -u)" = 0 ] || die "this needs root — run with sudo (sudo ./manage.sh ...)"; }
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 
@@ -64,7 +111,7 @@ ensure_conf() {
   if [ ! -f "$PORTS_CONF" ]; then
     if [ -f "$SCRIPT_DIR/ports.conf.example" ]; then
       cp "$SCRIPT_DIR/ports.conf.example" "$PORTS_CONF"
-      log "ports.conf از روی نمونه ساخته شد: $PORTS_CONF"
+      log "created ports.conf from the example: $PORTS_CONF"
     else
       : > "$PORTS_CONF"
     fi
@@ -94,7 +141,7 @@ check_conflict() {
     lp="$(trim "$lp")"; pr="$(trim "$pr")"
     if [ "$lp" = "$new_port" ]; then
       if [ "$pr" = both ] || [ "$new_proto" = both ] || [ "$pr" = "$new_proto" ]; then
-        die "پورت $new_port/$new_proto با قانون موجود '$n' تداخل دارد."
+        die "port $new_port/$new_proto conflicts with existing rule '$n'."
       fi
     fi
   done < "$PORTS_CONF"
@@ -107,29 +154,29 @@ cmd_add() {
   if [ $# -ge 4 ]; then
     name="$1"; lport="$2"; host="$3"; rport="$4"; proto="${5:-both}"; ip="${6:-dual}"
   else
-    echo "$(bold 'افزودن قانون فوروارد جدید')"
-    read -r -p "  نام (یکتا، فقط حروف/عدد/-/_): " name
-    read -r -p "  پورت ورودی روی این سرور: " lport
-    read -r -p "  دامنه یا آی‌پی مقصد: " host
-    read -r -p "  پورت روی مقصد: " rport
-    read -r -p "  پروتکل [tcp/udp/both] (پیش‌فرض both): " proto
+    echo "$(bold 'Add a new forward rule')"
+    read -r -p "  name (unique, letters/digits/-/_ only): " name
+    read -r -p "  local port (what users connect to on this box): " lport
+    read -r -p "  remote domain or IP: " host
+    read -r -p "  remote port: " rport
+    read -r -p "  protocol [tcp/udp/both] (default both): " proto
     proto="${proto:-both}"
-    read -r -p "  نسخه IP [dual/4/6] (پیش‌فرض dual): " ip
+    read -r -p "  IP version [dual/4/6] (default dual): " ip
     ip="${ip:-dual}"
   fi
 
-  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "نام نامعتبر است (فقط حروف/عدد/-/_)."
-  grep -Eq "^[[:space:]]*${name}[[:space:]]*," "$PORTS_CONF" 2>/dev/null && die "نامی به این اسم قبلاً وجود دارد."
-  [[ "$lport" =~ ^[0-9]+$ ]] && [ "$lport" -ge 1 ] && [ "$lport" -le 65535 ] || die "پورت ورودی نامعتبر است (1-65535)."
-  [[ "$rport" =~ ^[0-9]+$ ]] && [ "$rport" -ge 1 ] && [ "$rport" -le 65535 ] || die "پورت مقصد نامعتبر است (1-65535)."
-  [ -n "$host" ] || die "دامنه/آی‌پی مقصد خالی است."
-  case "$proto" in tcp|udp|both) ;; *) die "پروتکل باید tcp یا udp یا both باشد." ;; esac
-  case "$ip" in dual|4|6) ;; *) die "نسخه IP باید dual یا 4 یا 6 باشد." ;; esac
+  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid name (letters/digits/-/_ only)."
+  grep -Eq "^[[:space:]]*${name}[[:space:]]*," "$PORTS_CONF" 2>/dev/null && die "a rule named '$name' already exists."
+  [[ "$lport" =~ ^[0-9]+$ ]] && [ "$lport" -ge 1 ] && [ "$lport" -le 65535 ] || die "invalid local port (1-65535)."
+  [[ "$rport" =~ ^[0-9]+$ ]] && [ "$rport" -ge 1 ] && [ "$rport" -le 65535 ] || die "invalid remote port (1-65535)."
+  [ -n "$host" ] || die "remote domain/IP can't be empty."
+  case "$proto" in tcp|udp|both) ;; *) die "protocol must be tcp, udp, or both." ;; esac
+  case "$ip" in dual|4|6) ;; *) die "IP version must be dual, 4, or 6." ;; esac
 
   check_conflict "$name" "$lport" "$proto"
 
   printf '%s , %s , %s , %s , %s , %s\n' "$name" "$lport" "$host" "$rport" "$proto" "$ip" >> "$PORTS_CONF"
-  log "قانون '$name' به ports.conf اضافه شد."
+  log "rule '$name' added to ports.conf."
   sync_rule "$name"
 }
 
@@ -137,36 +184,36 @@ sync_rule() {
   require_root
   local name="$1" proto
   proto="$(awk -F',' -v n="$name" '{ gsub(/^[ \t]+|[ \t]+$/,"",$1); if ($1==n) { gsub(/^[ \t]+|[ \t]+$/,"",$5); print $5; exit } }' "$PORTS_CONF")"
-  [ -n "$proto" ] || die "قانون '$name' در ports.conf پیدا نشد."
+  [ -n "$proto" ] || die "rule '$name' not found in ports.conf."
   local protos=()
   case "$proto" in both) protos=(tcp udp) ;; tcp) protos=(tcp) ;; udp) protos=(udp) ;; esac
   for p in "${protos[@]}"; do
     systemctl enable --now "rm-socat@${name}-${p}.service"
-    echo "  $(green '✓') rm-socat@${name}-${p} فعال شد"
+    echo "  $(green '✓') rm-socat@${name}-${p} enabled"
   done
 }
 
 cmd_remove() {
   require_root
   local name="${1:-}"
-  [ -n "$name" ] || die "استفاده: manage.sh remove <name>"
-  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "نام نامعتبر است (فقط حروف/عدد/-/_)."
+  [ -n "$name" ] || die "usage: manage.sh remove <name>"
+  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid name (letters/digits/-/_ only)."
   for p in tcp udp; do
     systemctl disable --now "rm-socat@${name}-${p}.service" >/dev/null 2>&1 || true
   done
   ensure_conf
   if grep -Eq "^[[:space:]]*${name}[[:space:]]*," "$PORTS_CONF" 2>/dev/null; then
     sed -i "/^[[:space:]]*${name}[[:space:]]*,/d" "$PORTS_CONF"
-    log "قانون '$name' حذف و سرویس‌هایش متوقف/غیرفعال شدند."
+    log "rule '$name' removed and its services stopped/disabled."
   else
-    warn "قانونی به اسم '$name' در ports.conf نبود — فقط سرویس‌های احتمالی متوقف شدند."
+    warn "no rule named '$name' in ports.conf — stopped any matching services anyway."
   fi
 }
 
 cmd_apply() {
   require_root
   ensure_conf
-  log "اعمال ports.conf روی systemd..."
+  log "applying ports.conf to systemd..."
   mapfile -t desired < <(desired_instances)
 
   for inst in "${desired[@]}"; do
@@ -175,7 +222,7 @@ cmd_apply() {
     if systemctl is-active --quiet "rm-socat@${inst}.service"; then
       echo "  $(green '✓') rm-socat@${inst}"
     else
-      echo "  $(red '✗') rm-socat@${inst} $(dim '(بالا نیامد — journalctl -u rm-socat@'"${inst}"' را ببین)')"
+      echo "  $(red '✗') rm-socat@${inst} $(dim "(failed to start — see: journalctl -u rm-socat@${inst})")"
     fi
   done
 
@@ -193,7 +240,7 @@ cmd_apply() {
     fi
   done <<< "$existing"
 
-  log "اعمال شد."
+  log "done."
 }
 
 cmd_status() {
@@ -231,15 +278,15 @@ cmd_restart() {
 cmd_test() { "$SCRIPT_DIR/tests/test_ports.sh" "$@"; }
 
 cmd_stress() {
-  echo "$(yellow 'هشدار:') این تست کل زنجیره‌ی فوروارد (تا سرور مقصد واقعی) رو زیر فشار می‌ذاره، نه فقط سوکت لوکال."
-  confirm "ادامه بدم؟" false || { echo "لغو شد."; return 0; }
+  echo "$(yellow 'warning:') this puts real load on the full forward chain (up to the actual remote server), not just the local socket."
+  confirm "continue?" false || { echo "cancelled."; return 0; }
   "$SCRIPT_DIR/tests/stress_test.sh" "$@"
 }
 
 cmd_purge() {
   require_root
-  warn "این کار همه‌ی فورواردها رو متوقف و کاملاً از سیستم حذف می‌کنه (systemd، تنظیمات کرنل، و در آخر خودِ این پوشه)."
-  confirm "ادامه بده؟" false || { echo "لغو شد."; return 0; }
+  warn "this stops and completely removes every forward from the system (systemd, kernel tuning, and finally this whole directory)."
+  confirm "continue?" false || { echo "cancelled."; return 0; }
 
   local units
   units="$( { systemctl list-units 'rm-socat@*' --all --no-legend --plain 2>/dev/null | awk '{print $1}';
@@ -254,73 +301,80 @@ cmd_purge() {
   systemctl daemon-reload
   rm -f /etc/sysctl.d/99-rm-socat.conf /etc/security/limits.d/99-rm-socat.conf
   sysctl --system >/dev/null 2>&1 || true
-  log "همه‌ی سرویس‌ها و تنظیمات سیستمی پاک شدند."
+  log "all services and system-wide tuning removed."
 
   echo
-  read -r -p "$(yellow 'برای حذف کامل پوشه‌ی پروژه (شامل ports.conf و خود اسکریپت‌ها) بنویس YES: ')" ans
+  read -r -p "$(yellow 'type YES to also delete this entire project directory (ports.conf and every script included): ')" ans
   if [ "$ans" = "YES" ]; then
     cd /
     rm -rf "$SCRIPT_DIR"
-    echo "پاکسازی کامل انجام شد — چیزی باقی نماند."
+    echo "fully cleaned up — nothing left behind."
   else
-    echo "systemd و تنظیمات کرنل پاک شدند؛ پوشه‌ی پروژه (ports.conf و اسکریپت‌ها) نگه داشته شد."
+    echo "systemd units and kernel tuning removed; the project directory (ports.conf and scripts) was kept."
   fi
 }
 
 print_help() {
   cat <<EOF
-$(bold 'rm-socat manage.sh')
+$(bold "rm-socat manage.sh") $(dim "$VERSION")
 
-  ./manage.sh                          منوی تعاملی
+  ./manage.sh                          interactive menu
   ./manage.sh add [name lport host rport [proto] [ip]]
   ./manage.sh remove <name>
-  ./manage.sh apply                    هماهنگ کردن systemd با ports.conf
-  ./manage.sh status                   وضعیت زنده‌ی همه‌ی پورت‌ها
-  ./manage.sh restart                  ری‌استارت همه‌ی فورواردها
-  ./manage.sh test                     تست باز بودن همه‌ی پورت‌ها
+  ./manage.sh apply                    sync systemd with ports.conf
+  ./manage.sh status                   live status of every port
+  ./manage.sh restart                  restart every forward
+  ./manage.sh test                     confirm every port is actually open
   ./manage.sh stress <port> [tcp|udp] [step] [hold] [max]
-  ./manage.sh purge                    پاکسازی کامل (uninstall)
+  ./manage.sh purge                    full uninstall
 EOF
 }
 
 # --------------------------------------------------------------- menu ---
+menu_item() { printf '  %s %s   %s\n' "$(gray '❯')" "$(pink "[$1]")" "$2"; }
+
 menu() {
   while true; do
     banner
-    echo "  1) $(cyan 'افزودن پورت فوروارد جدید')"
-    echo "  2) $(cyan 'حذف یک پورت فوروارد')"
-    echo "  3) $(cyan 'اعمال تغییرات ports.conf (apply)')"
-    echo "  4) $(cyan 'وضعیت زنده‌ی همه‌ی پورت‌ها')"
-    echo "  5) $(cyan 'ری‌استارت همه')"
-    echo "  6) $(cyan 'تست سلامت پورت‌ها')"
-    echo "  7) $(magenta 'تست فشار / حداکثر کانکشن')"
-    echo "  8) $(pink 'ویرایش دستی ports.conf')"
-    echo "  9) $(red 'پاکسازی کامل (uninstall)')"
-    echo "  0) خروج"
+    echo " $(bold "$(purple 'Main Menu')")"
+    hline_plain
+    menu_item 1 "Add a new port forward"
+    menu_item 2 "Remove a port forward"
+    menu_item 3 "Apply ports.conf changes"
+    menu_item 4 "Live status of all ports"
+    menu_item 5 "Restart everything"
+    menu_item 6 "Test port health"
+    menu_item 7 "Stress test / max connections"
+    menu_item 8 "Edit ports.conf manually"
+    menu_item 9 "Full uninstall (purge)"
+    menu_item 0 "Exit"
+    hline_plain
     echo
-    read -r -p "$(bold 'انتخاب: ')" choice
+    read -r -p "$(bold "$(purple 'choice')") $(purple '❯') " choice
     echo
     case "$choice" in
       1) cmd_add ;;
-      2) read -r -p "نام قانون برای حذف: " n; cmd_remove "$n" ;;
+      2) read -r -p "rule name to remove: " n; cmd_remove "$n" ;;
       3) cmd_apply ;;
       4) cmd_status ;;
       5) cmd_restart ;;
       6) cmd_test ;;
       7)
-        read -r -p "پورت محلی: " p_port
-        read -r -p "پروتکل [tcp/udp] (پیش‌فرض tcp): " p_proto; p_proto="${p_proto:-tcp}"
+        read -r -p "local port: " p_port
+        read -r -p "protocol [tcp/udp] (default tcp): " p_proto; p_proto="${p_proto:-tcp}"
         cmd_stress "$p_port" "$p_proto"
         ;;
       8) "${EDITOR:-nano}" "$PORTS_CONF" ;;
       9) cmd_purge; exit 0 ;;
-      0) exit 0 ;;
-      *) warn "گزینه نامعتبر" ;;
+      0) echo "$(dim 'bye.')"; exit 0 ;;
+      *) warn "invalid choice" ;;
     esac
     echo
-    read -r -p "$(dim 'برای ادامه Enter بزن...')" _
+    read -r -p "$(dim 'press Enter to continue...')" _
   done
 }
+
+hline_plain() { printf '%s\n' "$(blue "$RULE")"; }
 
 # --------------------------------------------------------------- main ---
 ensure_conf
@@ -336,5 +390,5 @@ case "${1:-menu}" in
   purge)   cmd_purge ;;
   menu)    menu ;;
   help|-h|--help) print_help ;;
-  *) die "دستور نامعتبر: ${1:-} — برای راهنما: ./manage.sh help" ;;
+  *) die "invalid command: ${1:-} — see: ./manage.sh help" ;;
 esac
