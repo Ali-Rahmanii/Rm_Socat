@@ -358,15 +358,33 @@ cmd_purge() {
               systemctl list-unit-files 'rm-socat-batch@*' 'rm-socat@*' --no-legend 2>/dev/null | awk '{print $1}'; } | sort -u)"
   while IFS= read -r unit; do
     [ -z "$unit" ] && continue
-    systemctl disable --now "$unit" >/dev/null 2>&1 || true
-    echo "  $(red '✗ stopped') $unit"
+    if systemctl stop "$unit" >/dev/null 2>&1 && systemctl disable "$unit" >/dev/null 2>&1; then
+      echo "  $(red '✗ stopped') $unit"
+    else
+      echo "  $(yellow '?? could not stop/disable') $unit $(dim '(removing its unit file directly instead)')"
+    fi
   done <<< "$units"
 
-  rm -f /etc/systemd/system/rm-socat-batch@.service /etc/systemd/system/rm-socat@.service
+  # belt-and-suspenders: some of the above can silently fail under load
+  # (dozens of units stopping at once) — remove the template files and any
+  # leftover enablement symlinks/overrides directly so nothing survives a
+  # partial failure, then flush systemd's own memory of them.
+  rm -f /etc/systemd/system/rm-socat@.service /etc/systemd/system/rm-socat-batch@.service
+  rm -f /etc/systemd/system/multi-user.target.wants/rm-socat@*.service
+  rm -f /etc/systemd/system/multi-user.target.wants/rm-socat-batch@*.service
+  rm -rf /etc/systemd/system/rm-socat@*.service.d /etc/systemd/system/rm-socat-batch@*.service.d
   systemctl daemon-reload
+  systemctl reset-failed >/dev/null 2>&1 || true
+
+  # last resort: any socat process that somehow survived the unit stops
+  pkill -x socat >/dev/null 2>&1 || true
+
   rm -f /etc/sysctl.d/99-rm-socat.conf /etc/security/limits.d/99-rm-socat.conf
   sysctl --system >/dev/null 2>&1 || true
-  log "all services and system-wide tuning removed."
+  rm -f /usr/local/bin/rmsocat
+  log "all services, the rmsocat command, and system-wide tuning removed."
+
+  echo "$(bold 'verify:') systemctl list-units 'rm-socat*' --all   and   ps aux | grep socat"
 
   echo
   read -r -p "$(yellow 'type YES to also delete this entire project directory (ports.conf and every script included): ')" ans
