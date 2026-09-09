@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# rm-socat — manage TCP/UDP port forwards (socat + systemd, one dual-stack
-# socket per rule). Run with no arguments for the interactive menu, or see
-# `./manage.sh help` for direct subcommands.
+# rm-socat — manage TCP/UDP port forwards. Rules live in ports.conf; each
+# one is hashed into a fixed batch (batches.conf), and one systemd unit
+# supervises every forward in its batch (see bin/rm-socat-batch-run.sh) —
+# instead of one systemd unit per port, which is what drove PID 1's own
+# CPU usage up once there were dozens of ports. Run with no arguments for
+# the interactive menu, or see `./manage.sh help` for direct subcommands.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORTS_CONF="$SCRIPT_DIR/ports.conf"
+BATCHES_CONF="$SCRIPT_DIR/batches.conf"
 
-VERSION="v1.0.0"
+VERSION="v1.1.0"
 REPO_URL="https://github.com/Ali-Rahmanii/Rm_Socat"
 AUTHOR="Ali Rahmani"
 TELEGRAM="@A_Alirahmani"
@@ -116,7 +120,18 @@ ensure_conf() {
       : > "$PORTS_CONF"
     fi
   fi
+  [ -f "$BATCHES_CONF" ] || echo 10 > "$BATCHES_CONF"
 }
+
+load_num_batches() {
+  NUM_BATCHES="$(cat "$BATCHES_CONF" 2>/dev/null | tr -d '[:space:]')"
+  [[ "$NUM_BATCHES" =~ ^[0-9]+$ ]] && [ "$NUM_BATCHES" -ge 1 ] || NUM_BATCHES=10
+}
+
+# which fixed batch a rule's name hashes into — stable regardless of how
+# many other rules exist, so adding/removing one rule never reshuffles
+# anyone else's batch
+bucket_of() { printf '%s' "$1" | cksum | awk -v n="$NUM_BATCHES" '{print $1 % n}'; }
 
 # instances (name-tcp / name-udp) that ports.conf currently asks for
 desired_instances() {
@@ -131,6 +146,8 @@ desired_instances() {
     esac
   done < "$PORTS_CONF"
 }
+
+desired_instance_count() { desired_instances | wc -l | tr -d '[:space:]'; }
 
 check_conflict() {
   local new_name="$1" new_port="$2" new_proto="$3"
@@ -147,9 +164,30 @@ check_conflict() {
   done < "$PORTS_CONF"
 }
 
+install_unit_template() {
+  sed "s#__RUN_HELPER__#${SCRIPT_DIR}/bin/rm-socat-batch-run.sh#" "$SCRIPT_DIR/systemd/rm-socat-batch@.service" > /etc/systemd/system/rm-socat-batch@.service
+  systemctl daemon-reload
+}
+
+# stop/disable leftover units from the old one-unit-per-port scheme
+migrate_legacy_units() {
+  local legacy
+  legacy="$(systemctl list-unit-files 'rm-socat@*' --no-legend 2>/dev/null | awk '{print $1}')"
+  [ -z "$legacy" ] && return 0
+  log "removing old one-unit-per-port services..."
+  while IFS= read -r u; do
+    [ -z "$u" ] && continue
+    systemctl disable --now "$u" >/dev/null 2>&1 || true
+  done <<< "$legacy"
+  rm -f /etc/systemd/system/rm-socat@.service
+  systemctl daemon-reload
+}
+
 # ------------------------------------------------------------- commands --
 cmd_add() {
+  require_root
   ensure_conf
+  load_num_batches
   local name lport host rport proto ip
   if [ $# -ge 4 ]; then
     name="$1"; lport="$2"; host="$3"; rport="$4"; proto="${5:-both}"; ip="${6:-dual}"
@@ -177,66 +215,59 @@ cmd_add() {
 
   printf '%s , %s , %s , %s , %s , %s\n' "$name" "$lport" "$host" "$rport" "$proto" "$ip" >> "$PORTS_CONF"
   log "rule '$name' added to ports.conf."
-  sync_rule "$name"
-}
 
-sync_rule() {
-  require_root
-  local name="$1" proto
-  proto="$(awk -F',' -v n="$name" '{ gsub(/^[ \t]+|[ \t]+$/,"",$1); if ($1==n) { gsub(/^[ \t]+|[ \t]+$/,"",$5); print $5; exit } }' "$PORTS_CONF")"
-  [ -n "$proto" ] || die "rule '$name' not found in ports.conf."
-  local protos=()
-  case "$proto" in both) protos=(tcp udp) ;; tcp) protos=(tcp) ;; udp) protos=(udp) ;; esac
-  for p in "${protos[@]}"; do
-    systemctl enable --now "rm-socat@${name}-${p}.service"
-    echo "  $(green '✓') rm-socat@${name}-${p} enabled"
-  done
+  local b; b="$(bucket_of "$name")"
+  systemctl enable --now "rm-socat-batch@${b}.service" >/dev/null 2>&1
+  systemctl restart "rm-socat-batch@${b}.service"
+  echo "  $(green '✓') batch ${b} restarted to pick up '${name}' (other rules sharing that batch blip too)"
 }
 
 cmd_remove() {
   require_root
+  ensure_conf
+  load_num_batches
   local name="${1:-}"
   [ -n "$name" ] || die "usage: manage.sh remove <name>"
   [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid name (letters/digits/-/_ only)."
-  for p in tcp udp; do
-    systemctl disable --now "rm-socat@${name}-${p}.service" >/dev/null 2>&1 || true
-  done
-  ensure_conf
+
   if grep -Eq "^[[:space:]]*${name}[[:space:]]*," "$PORTS_CONF" 2>/dev/null; then
+    local b; b="$(bucket_of "$name")"
     sed -i "/^[[:space:]]*${name}[[:space:]]*,/d" "$PORTS_CONF"
-    log "rule '$name' removed and its services stopped/disabled."
+    systemctl restart "rm-socat-batch@${b}.service" 2>/dev/null || true
+    log "rule '$name' removed; batch ${b} restarted."
   else
-    warn "no rule named '$name' in ports.conf — stopped any matching services anyway."
+    warn "no rule named '$name' in ports.conf — nothing to remove."
   fi
 }
 
 cmd_apply() {
   require_root
   ensure_conf
-  log "applying ports.conf to systemd..."
-  mapfile -t desired < <(desired_instances)
+  load_num_batches
+  migrate_legacy_units
 
-  for inst in "${desired[@]}"; do
-    systemctl enable --now "rm-socat@${inst}.service" >/dev/null 2>&1
-    systemctl restart "rm-socat@${inst}.service"
-    if systemctl is-active --quiet "rm-socat@${inst}.service"; then
-      echo "  $(green '✓') rm-socat@${inst}"
+  log "applying ports.conf across $NUM_BATCHES batch(es)..."
+  local b
+  for ((b = 0; b < NUM_BATCHES; b++)); do
+    systemctl enable --now "rm-socat-batch@${b}.service" >/dev/null 2>&1
+    systemctl restart "rm-socat-batch@${b}.service"
+    if systemctl is-active --quiet "rm-socat-batch@${b}.service"; then
+      echo "  $(green '✓') rm-socat-batch@${b}"
     else
-      echo "  $(red '✗') rm-socat@${inst} $(dim "(failed to start — see: journalctl -u rm-socat@${inst})")"
+      echo "  $(red '✗') rm-socat-batch@${b} $(dim "(failed — see: journalctl -u rm-socat-batch@${b})")"
     fi
   done
 
+  # drop batch units left over from a higher batch count set previously
   local existing
-  existing="$( { systemctl list-units 'rm-socat@*' --all --no-legend --plain 2>/dev/null | awk '{print $1}';
-                 systemctl list-unit-files 'rm-socat@*' --no-legend 2>/dev/null | awk '{print $1}'; } | sort -u)"
+  existing="$( { systemctl list-units 'rm-socat-batch@*' --all --no-legend --plain 2>/dev/null | awk '{print $1}';
+                 systemctl list-unit-files 'rm-socat-batch@*' --no-legend 2>/dev/null | awk '{print $1}'; } | sort -u)"
   while IFS= read -r unit; do
     [ -z "$unit" ] && continue
-    local inst="${unit#rm-socat@}"; inst="${inst%.service}"
-    local keep=0 d
-    for d in "${desired[@]}"; do [ "$d" = "$inst" ] && keep=1 && break; done
-    if [ "$keep" -eq 0 ]; then
+    local id="${unit#rm-socat-batch@}"; id="${id%.service}"
+    if [[ "$id" =~ ^[0-9]+$ ]] && [ "$id" -ge "$NUM_BATCHES" ]; then
       systemctl disable --now "$unit" >/dev/null 2>&1 || true
-      echo "  $(red '✗ removed stale') $unit"
+      echo "  $(red '✗ removed') $unit (beyond current batch count)"
     fi
   done <<< "$existing"
 
@@ -245,33 +276,36 @@ cmd_apply() {
 
 cmd_status() {
   ensure_conf
-  printf "%-16s %-6s %-8s %-28s %-10s %-8s\n" "NAME" "PROTO" "PORT" "TARGET" "SYSTEMD" "SOCKET"
+  load_num_batches
+  printf "%-16s %-6s %-8s %-28s %-16s %-8s\n" "NAME" "PROTO" "PORT" "TARGET" "BATCH" "SOCKET"
   while IFS=',' read -r n lp h rp pr ip; do
     n="$(trim "${n%%#*}")"
     [ -z "$n" ] && continue
     lp="$(trim "$lp")"; h="$(trim "$h")"; rp="$(trim "$rp")"; pr="$(trim "$pr")"
+    local b; b="$(bucket_of "$n")"
     local protos=()
     case "$pr" in both) protos=(tcp udp) ;; tcp) protos=(tcp) ;; udp) protos=(udp) ;; esac
     for p in "${protos[@]}"; do
-      local unit="rm-socat@${n}-${p}.service" active sockstr
+      local unit="rm-socat-batch@${b}.service" active sockstr batchstr
       if systemctl is-active --quiet "$unit" 2>/dev/null; then active="$(green active)"; else active="$(red down)"; fi
+      batchstr="batch${b}:${active}"
       if [ "$p" = tcp ]; then
         ss -Htln "sport = :${lp}" 2>/dev/null | grep -q LISTEN && sockstr="$(green LISTEN)" || sockstr="$(red CLOSED)"
       else
         ss -Huln "sport = :${lp}" 2>/dev/null | grep -q . && sockstr="$(green LISTEN)" || sockstr="$(red CLOSED)"
       fi
-      printf "%-16s %-6s %-8s %-28s %-10s %-8s\n" "$n" "$p" "$lp" "${h}:${rp}" "$active" "$sockstr"
+      printf "%-16s %-6s %-8s %-28s %-16s %-8s\n" "$n" "$p" "$lp" "${h}:${rp}" "$batchstr" "$sockstr"
     done
   done < "$PORTS_CONF"
 }
 
 cmd_restart() {
   require_root
-  ensure_conf
-  mapfile -t desired < <(desired_instances)
-  for inst in "${desired[@]}"; do
-    systemctl restart "rm-socat@${inst}.service"
-    echo "  $(green '✓ restarted') rm-socat@${inst}"
+  load_num_batches
+  local b
+  for ((b = 0; b < NUM_BATCHES; b++)); do
+    systemctl restart "rm-socat-batch@${b}.service"
+    echo "  $(green '✓ restarted') rm-socat-batch@${b}"
   done
 }
 
@@ -283,21 +317,47 @@ cmd_stress() {
   "$SCRIPT_DIR/tests/stress_test.sh" "$@"
 }
 
+cmd_batches() {
+  require_root
+  ensure_conf
+  load_num_batches
+  local total; total="$(desired_instance_count)"
+  echo "current batch count: $NUM_BATCHES  (about $total forwards configured, ~$(( (total + NUM_BATCHES - 1) / NUM_BATCHES )) per batch on average)"
+  read -r -p "new batch count (fewer units = less systemd overhead, each restart affects more ports): " n
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] || die "must be a positive integer."
+  echo "$n" > "$BATCHES_CONF"
+  log "batch count set to $n — applying..."
+  cmd_apply
+}
+
+cmd_update() {
+  require_root
+  [ -d "$SCRIPT_DIR/.git" ] || die "not a git checkout — reinstall with the one-line installer (see README) to enable updates."
+  log "pulling latest changes..."
+  git -C "$SCRIPT_DIR" pull --ff-only || die "git pull failed — check for local edits in $SCRIPT_DIR"
+  chmod +x "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/bin/*.sh "$SCRIPT_DIR"/tests/*.sh 2>/dev/null || true
+  log "reinstalling the systemd template (in case it changed)..."
+  install_unit_template
+  ensure_conf
+  cmd_apply
+  log "update complete."
+}
+
 cmd_purge() {
   require_root
   warn "this stops and completely removes every forward from the system (systemd, kernel tuning, and finally this whole directory)."
   confirm "continue?" false || { echo "cancelled."; return 0; }
 
   local units
-  units="$( { systemctl list-units 'rm-socat@*' --all --no-legend --plain 2>/dev/null | awk '{print $1}';
-              systemctl list-unit-files 'rm-socat@*' --no-legend 2>/dev/null | awk '{print $1}'; } | sort -u)"
+  units="$( { systemctl list-units 'rm-socat-batch@*' 'rm-socat@*' --all --no-legend --plain 2>/dev/null | awk '{print $1}';
+              systemctl list-unit-files 'rm-socat-batch@*' 'rm-socat@*' --no-legend 2>/dev/null | awk '{print $1}'; } | sort -u)"
   while IFS= read -r unit; do
     [ -z "$unit" ] && continue
     systemctl disable --now "$unit" >/dev/null 2>&1 || true
     echo "  $(red '✗ stopped') $unit"
   done <<< "$units"
 
-  rm -f /etc/systemd/system/rm-socat@.service
+  rm -f /etc/systemd/system/rm-socat-batch@.service /etc/systemd/system/rm-socat@.service
   systemctl daemon-reload
   rm -f /etc/sysctl.d/99-rm-socat.conf /etc/security/limits.d/99-rm-socat.conf
   sysctl --system >/dev/null 2>&1 || true
@@ -323,31 +383,36 @@ $(bold "rm-socat manage.sh") $(dim "$VERSION")
   ./manage.sh remove <name>
   ./manage.sh apply                    sync systemd with ports.conf
   ./manage.sh status                   live status of every port
-  ./manage.sh restart                  restart every forward
+  ./manage.sh restart                  restart every batch
   ./manage.sh test                     confirm every port is actually open
   ./manage.sh stress <port> [tcp|udp] [step] [hold] [max]
+  ./manage.sh batches                  change how many systemd units share the load
+  ./manage.sh update                   git pull + re-apply
   ./manage.sh purge                    full uninstall
 EOF
 }
 
 # --------------------------------------------------------------- menu ---
 menu_item() { printf '  %s %s   %s\n' "$(gray '❯')" "$(pink "[$1]")" "$2"; }
+hline_plain() { printf '%s\n' "$(blue "$RULE")"; }
 
 menu() {
   while true; do
     banner
     echo " $(bold "$(purple 'Main Menu')")"
     hline_plain
-    menu_item 1 "Add a new port forward"
-    menu_item 2 "Remove a port forward"
-    menu_item 3 "Apply ports.conf changes"
-    menu_item 4 "Live status of all ports"
-    menu_item 5 "Restart everything"
-    menu_item 6 "Test port health"
-    menu_item 7 "Stress test / max connections"
-    menu_item 8 "Edit ports.conf manually"
-    menu_item 9 "Full uninstall (purge)"
-    menu_item 0 "Exit"
+    menu_item 1  "Add a new port forward"
+    menu_item 2  "Remove a port forward"
+    menu_item 3  "Apply ports.conf changes"
+    menu_item 4  "Live status of all ports"
+    menu_item 5  "Restart everything"
+    menu_item 6  "Test port health"
+    menu_item 7  "Stress test / max connections"
+    menu_item 8  "Edit ports.conf manually"
+    menu_item 9  "Change batch count (systemd units)"
+    menu_item 10 "Update rm-socat (git pull + re-apply)"
+    menu_item 11 "Full uninstall (purge)"
+    menu_item 0  "Exit"
     hline_plain
     echo
     read -r -p "$(bold "$(purple 'choice')") $(purple '❯') " choice
@@ -365,7 +430,9 @@ menu() {
         cmd_stress "$p_port" "$p_proto"
         ;;
       8) "${EDITOR:-nano}" "$PORTS_CONF" ;;
-      9) cmd_purge; exit 0 ;;
+      9) cmd_batches ;;
+      10) cmd_update ;;
+      11) cmd_purge; exit 0 ;;
       0) echo "$(dim 'bye.')"; exit 0 ;;
       *) warn "invalid choice" ;;
     esac
@@ -373,8 +440,6 @@ menu() {
     read -r -p "$(dim 'press Enter to continue...')" _
   done
 }
-
-hline_plain() { printf '%s\n' "$(blue "$RULE")"; }
 
 # --------------------------------------------------------------- main ---
 ensure_conf
@@ -387,6 +452,8 @@ case "${1:-menu}" in
   restart) cmd_restart ;;
   test)    shift; cmd_test "$@" ;;
   stress)  shift; cmd_stress "$@" ;;
+  batches) cmd_batches ;;
+  update)  cmd_update ;;
   purge)   cmd_purge ;;
   menu)    menu ;;
   help|-h|--help) print_help ;;

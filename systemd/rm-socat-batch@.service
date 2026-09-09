@@ -1,5 +1,5 @@
 [Unit]
-Description=rm-socat forward instance %i
+Description=rm-socat batch supervisor %i (one process, many forwards)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0

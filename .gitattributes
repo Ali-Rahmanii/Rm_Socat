@@ -1,3 +1,4 @@
 *.sh text eol=lf
 *.service text eol=lf
 ports.conf.example text eol=lf
+batches.conf text eol=lf
